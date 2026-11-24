@@ -1,0 +1,4 @@
+<resources>
+    <!-- Compose draws all the UI; this theme only gives the window a base. -->
+    <style name="Theme.LocalEmailAssistant" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

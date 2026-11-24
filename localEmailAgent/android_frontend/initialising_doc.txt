@@ -1,0 +1,150 @@
+INITIALISING DOC - how this Android project was set up, and how it differs from the
+standard Android Studio "New Project" wizard (Empty Activity, Jetpack Compose)
+=============================================================================
+
+Project name : Local Email Assistant   (Gradle rootProject.name = "LocalEmailAssistant")
+Folder       : D:\RAG_agent_project\localEmailAgent\android_frontend
+Package      : com.swapnil.localemail
+Language/UI  : Kotlin, Jetpack Compose, Material 3
+Talks to     : the FastAPI backend in ..\backend, over Tailscale (HTTPS only)
+
+
+1. HOW THE PROJECT WAS CREATED (the big difference)
+---------------------------------------------------
+The wizard was NOT used. Every file was written by hand (by Claude Code) because the wizard
+is a GUI and cannot be driven from a terminal. The result has the same layout the wizard
+produces (version catalog, one :app module, Kotlin DSL), so Android Studio opens it normally:
+File > Open > pick the android_frontend folder, then let Gradle sync.
+
+
+2. WHAT DIFFERS FROM THE WIZARD OUTPUT
+--------------------------------------
+a) Gradle wrapper generated from the command line.
+   The wizard bundles gradle-wrapper.jar. Here it was produced by running the "gradle wrapper"
+   task with Gradle 9.6.1 that was already in your cache (~/.gradle/wrapper/dists) and a JDK 21
+   that Gradle had downloaded earlier (~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2).
+   Android Studio's own bundled JDK folder (D:\Android Studio\jbr) has no java.exe in it,
+   so command-line builds used the Gradle-downloaded JDK 21 instead.
+   Studio itself uses whatever "Gradle JDK" is set in its settings; that is unaffected.
+
+b) Versions were looked up, not taken from a template.
+   They were read from the Google Maven and Maven Central version lists on 2026-11-24 and
+   are all in gradle/libs.versions.toml:
+     Android Gradle Plugin 9.3.0        Kotlin 2.4.21         Gradle 9.6.1
+     Compose BOM 2026.09.00 (Compose 1.12.x)                  Navigation Compose 2.10.2
+     Lifecycle 2.11.1   Activity Compose 1.13.0   Core KTX 1.19.1   DataStore 1.3.0
+     OkHttp 5.5.1   kotlinx-serialization-json 1.13.0   kotlinx-coroutines 1.11.0
+   The Compose BOM is deliberately one step behind the newest (2026.11.01). The newest Compose
+   (1.13) needs the Android 37.1 SDK platform; your SDK (D:\Android_SDK_Folder) has platforms
+   35, 36, 36.1 and 37.0 only. Using the older BOM avoids changing your SDK installation.
+   To move to the newest later: install "Android 37.1" in SDK Manager, then set
+   composeBom = "2026.11.01" and compileSdk to 37.1.
+
+c) SDK levels: compileSdk 37, targetSdk 36, minSdk 26.
+   compileSdk is 37 because core-ktx, OkHttp, Navigation and Lifecycle in the versions above
+   require it. The wizard would normally pick one number for compile and target.
+
+d) local.properties was written by hand: sdk.dir=D:\Android_SDK_Folder
+   (the wizard writes this automatically). It is machine-specific and git-ignored.
+
+e) Pieces the wizard adds that were left out on purpose:
+   - Greeting/"Hello Android" sample composable and Preview functions
+   - ui/theme/Color.kt + Type.kt + Theme.kt split (here a single ui/Theme.kt)
+   - androidTest folder and the instrumented-test dependencies
+   - proguard-rules.pro (minification is off)
+   - backup_rules.xml and data_extraction_rules.xml (replaced by android:allowBackup="false")
+   - ui-tooling-preview and ui-test libraries (ui-tooling kept for debug builds)
+   - the Android-robot launcher icon set (replaced by a small hand-drawn adaptive icon:
+     a white envelope on blue, res/drawable/ic_launcher_foreground.xml)
+
+f) Libraries added that the wizard does not include:
+   navigation-compose (3 tabs), datastore-preferences (settings + cached digest),
+   okhttp (network), kotlinx-serialization-json + its compiler plugin (JSON),
+   kotlinx-coroutines-android, lifecycle-viewmodel-compose, material-icons-core
+   (Material 3 no longer pulls the icon set in by itself).
+   Retrofit and the extended icon pack were avoided to keep the app small.
+
+g) themes.xml uses the platform theme android:Theme.Material.Light.NoActionBar, because the
+   app has no XML Material Components library; Compose draws everything.
+
+h) AndroidManifest.xml: INTERNET permission only. No usesCleartextTraffic, so plain http://
+   is blocked; the app only accepts https:// addresses (the one from "tailscale serve").
+
+i) Security choices not in the wizard:
+   - The API token is encrypted with an AES key held in the Android Keystore (TokenCipher.kt)
+     before it is stored; it is never logged.
+   - android:allowBackup="false" so the token and cached digest are not copied to cloud backup.
+
+
+3. FOLDER MAP
+-------------
+settings.gradle.kts, build.gradle.kts, gradle.properties, gradle/libs.versions.toml
+app/build.gradle.kts
+app/src/main/AndroidManifest.xml, res/ (strings, themes, colors, icon)
+app/src/main/java/com/swapnil/localemail/
+    MainActivity.kt
+    data/Models.kt        JSON classes that mirror the backend
+    data/ApiClient.kt     /health, POST /summarize, GET /summarize/{id}
+    data/SettingsStore.kt DataStore: settings + last digest
+    data/TokenCipher.kt   Keystore encryption for the token
+    data/Helpers.kt       RunState, job -> UI state, URL validation, date shortening
+    ui/AppViewModel.kt    state, polling every 2 s, connection check
+    ui/AppRoot.kt         3-tab navigation
+    ui/HomeScreen.kt, DigestScreen.kt, SettingsScreen.kt, Theme.kt
+app/src/test/...          JVM unit tests (contract with the backend JSON, helpers)
+
+
+4. HOW TO BUILD AND RUN
+-----------------------
+In Android Studio: open the folder, wait for Gradle sync, pick your phone (or an emulator),
+press Run.
+
+From a terminal (PowerShell), in this folder:
+    $env:JAVA_HOME = "C:\Users\Lenovo\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2"
+    .\gradlew.bat testDebugUnitTest assembleDebug
+The APK appears in app\build\outputs\apk\debug\app-debug.apk.
+
+
+5. FIRST-RUN CHECKLIST
+----------------------
+1. Backend: copy backend\.env.example to backend\.env and set API_TOKEN to a long random string.
+2. Backend: python -m scripts.run_api
+3. Laptop: tailscale serve --bg 8000   (HTTPS certificates must be enabled once in the
+   Tailscale admin console). Note the https://<laptop>.<tailnet>.ts.net address it prints.
+4. Phone: Tailscale app connected to the same account.
+5. App > Settings: your name, device name (a label), server address, token > Save.
+6. Home should show a green tick and "Connected to <device>". Tap Summarize.
+
+
+6. WHAT HAS AND HAS NOT BEEN VERIFIED
+-------------------------------------
+See the build result recorded at the end of this file.
+
+Build result recorded on 2026-11-24
+  Command   : .\gradlew.bat testDebugUnitTest assembleDebug   (JDK 21 from ~/.gradle/jdks)
+  Outcome   : BUILD SUCCESSFUL, no compiler warnings
+  Unit tests: 7 passed, 0 failed (ContractTest: parses sample backend JSON, status mapping;
+              HelpersTest: server-address validation, date shortening)
+  APK       : app\build\outputs\apk\debug\app-debug.apk  (about 13.8 MB)
+  Backend   : 38 tests passed (python -m pytest -q tests, in ..\backend)
+
+Problems met while setting up, and the fixes (useful if a version bump breaks things)
+  1. First build failed in checkDebugAarMetadata: the newest libraries (core-ktx 1.19.1,
+     OkHttp 5.5.1, Compose 1.13.0 ...) need compileSdk 37, and Compose 1.13 needs 37.1.
+     Fix: compileSdk = 37 (installed) and Compose BOM 2026.09.00 (Compose 1.12).
+  2. Second build failed: "Unresolved reference 'icons'". material3 no longer brings in the
+     icon set. Fix: added androidx.compose.material:material-icons-core.
+
+NOT yet verified
+  - Installing and running the app on a phone or emulator (no device was available to the build).
+  - The Tailscale path: "tailscale serve" has not been run; the laptop's Tailscale showed as
+    offline when checked.
+  - A real Gmail summary through the app. The backend structured summary was checked with the
+    real model on three made-up emails only.
+
+Update, same day: AGP lowered from 9.5.2 to 9.3.0
+  Android Studio 2026.1 (Quail) reported "The project is using an incompatible version (AGP 9.5.2)
+  of the Android Gradle plugin. Latest supported version is AGP 9.3.0". The project was set to
+  9.3.0 (gradle/libs.versions.toml, key "agp") and rebuilt: BUILD SUCCESSFUL, 7 unit tests pass.
+  To use a newer AGP later, update Android Studio first, then raise "agp" to a version the new
+  Studio lists as supported.

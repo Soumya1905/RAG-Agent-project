@@ -1,0 +1,27 @@
+# Safety net for the whole repository. Each sub-project also has its own .gitignore.
+
+# Secrets and per-machine config: never commit these
+.env
+**/.env
+**/secrets/
+credentials.json
+token.json
+local.properties
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+nltk_data/
+
+# Android / Gradle build output
+.gradle/
+build/
+.idea/
+*.apk
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
